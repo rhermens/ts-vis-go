@@ -10,11 +10,16 @@ import (
 	"strings"
 )
 
+type tsConfig struct {
+	CompilerOptions map[string]string `json:"compilerOptions"`
+}
+
 type packageFile struct {
 	Dependencies map[string]string `json:"dependencies"`
 }
 
 type Resolver struct {
+	cfg tsConfig
 	cwd string
 	modules []string
 }
@@ -45,7 +50,22 @@ func NewResolver(entrypoint string) *Resolver {
 		panic(err)
 	}
 
+	deps, err := readDeps(cwd)
+	tsconfig, err := readTsConfig(cwd)
+
+	return &Resolver{
+		cwd: cwd,
+		modules: deps,
+		cfg: tsconfig,
+	}
+}
+
+func readDeps(cwd string) ([]string, error) {
 	file, err := os.ReadFile(path.Join(cwd, "package.json"));
+	if err != nil {
+		return nil, err
+	}
+
 	var pkg packageFile
 	json.Unmarshal(file, &pkg)
 
@@ -54,10 +74,19 @@ func NewResolver(entrypoint string) *Resolver {
 		deps = append(deps, k)
 	}
 
-	return &Resolver{
-		cwd: cwd,
-		modules: deps,
+	return deps, nil
+}
+
+func readTsConfig(cwd string) (tsConfig, error) {
+	file, err := os.ReadFile(path.Join(cwd, "tsconfig.json"));
+	if err != nil {
+		return tsConfig{}, err
 	}
+
+	var tsconfig tsConfig
+	json.Unmarshal(file, &tsconfig)
+
+	return tsconfig, nil
 }
 
 func resolveCwd(entrypoint string) (string, error) {

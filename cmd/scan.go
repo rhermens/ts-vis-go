@@ -7,11 +7,11 @@ import (
 	"errors"
 	"os"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/spf13/cobra"
 	"github.com/ts-vis-go/internal/typescript"
 )
 
-// rootCmd represents the base command when called without any subcommands
 var scanCmd = &cobra.Command{
 	Use: "scan",
 	Short: "Scan entrypoint for references",
@@ -27,6 +27,7 @@ var scanCmd = &cobra.Command{
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		typescript.Scan(args[0])
+		graph := typescript.Scan(args[0])
+		spew.Dump(graph)
 	},
 }
