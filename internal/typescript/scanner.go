@@ -18,18 +18,57 @@ type Edge struct {
 }
 
 type Graph struct {
-	nodes []Node
-	edges []Edge
+	Nodes []Node
+	Edges []Edge
+	MaxDepth int
 }
 
-func (g *Graph) ContainsNode(path string) bool {
-	for _, node := range g.nodes {
+func (g *Graph) FindNode(path string) *Node {
+	for _, node := range g.Nodes {
 		if node.Path == path {
-			return true
+			return &node
 		}
 	}
 
+	return nil
+}
+
+func (g *Graph) ContainsNode(path string) bool {
+	if g.FindNode(path) != nil {
+		return true
+	}
+
 	return false
+}
+
+func (g *Graph) NodesByDepth(depth int) []Node {
+	nodes := []Node{}
+	for _, node := range g.Nodes {
+		if node.Depth == depth {
+			nodes = append(nodes, node)
+		}
+	}
+
+	return nodes
+}
+
+func (g *Graph) EdgesFromNode(node *Node) []Edge {
+	edges := []Edge{}
+	for _, edge := range g.Edges {
+		if edge.From.Path == node.Path {
+			edges = append(edges, edge)
+		}
+	}
+
+	return edges
+}
+
+func newGraph() *Graph {
+	return &Graph{
+		Nodes: []Node{},
+		Edges: []Edge{},
+		MaxDepth: 20,
+	}
 }
 
 func Scan(entrypoint string) *Graph {
@@ -39,9 +78,11 @@ func Scan(entrypoint string) *Graph {
 	parser.SetLanguage(tree_sitter.NewLanguage(tree_sitter_ts.LanguageTypescript()))
 	resolver := NewResolver(entrypoint)
 
-	graph := &Graph{}
+	graph := newGraph()
+	next := Node{Path: entrypoint, Depth: 0}
+	graph.Nodes = append(graph.Nodes, next)
 
-	read(parser, resolver, graph, &Node{Path: entrypoint, Depth: 0})
+	read(parser, resolver, graph, &next)
 
 	return graph
 }
@@ -62,13 +103,19 @@ func read(parser *tree_sitter.Parser, resolver *Resolver, graph *Graph, node *No
 			continue
 		}
 
-		next := Node{Path: resolved, Depth: node.Depth + 1}
-		if graph.ContainsNode(next.Path) {
-			return
+		if n := graph.FindNode(resolved); n != nil {
+			graph.Edges = append(graph.Edges, Edge{From: node, To: n})
+			continue
 		}
 
-		graph.nodes = append(graph.nodes, next)
-		graph.edges = append(graph.edges, Edge{From: node, To: &next})
+		next := Node{Path: resolved, Depth: node.Depth+1}
+		graph.Nodes = append(graph.Nodes, next)
+		graph.Edges = append(graph.Edges, Edge{From: node, To: &next})
+
+		if next.Depth > graph.MaxDepth {
+			continue
+		}
+
 		read(parser, resolver, graph, &next)
 	}
 }
