@@ -10,6 +10,7 @@ import (
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/spf13/cobra"
+	"github.com/ts-vis-go/internal/model"
 	"github.com/ts-vis-go/internal/typescript"
 )
 
@@ -36,7 +37,7 @@ var scanCmd = &cobra.Command{
 			Width:  "100%",
 			Height: "100vh",
 		}))
-		tree.AddSeries("tree", IntoTreeData(graph, MaxDepth), charts.WithTreeOpts(opts.TreeChart{
+		tree.AddSeries(args[0], IntoTreeData(graph, MaxDepth), charts.WithTreeOpts(opts.TreeChart{
 			Orient: "LR",
 			Roam:   opts.Bool(true),
 			Left:   "0",
@@ -50,7 +51,7 @@ var scanCmd = &cobra.Command{
 	},
 }
 
-func IntoTreeData(g *typescript.Graph, maxDepth int) []opts.TreeData {
+func IntoTreeData(g *model.Graph, maxDepth int) []opts.TreeData {
 	var treeData []opts.TreeData
 	for _, node := range g.NodesByDepth(0) {
 		treeData = append(treeData, opts.TreeData{
@@ -62,7 +63,7 @@ func IntoTreeData(g *typescript.Graph, maxDepth int) []opts.TreeData {
 	return treeData
 }
 
-func IntoChildren(g *typescript.Graph, node *typescript.Node, depth int, maxDepth int) []*opts.TreeData {
+func IntoChildren(g *model.Graph, node *model.Node, depth int, maxDepth int) []*opts.TreeData {
 	var children []*opts.TreeData
 	if depth > maxDepth {
 		return children
