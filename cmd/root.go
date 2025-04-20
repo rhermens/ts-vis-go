@@ -21,5 +21,6 @@ func Execute() {
 func init() {
 	rootCmd.AddCommand(scanCmd)
 	scanCmd.Flags().IntVarP(&MaxDepth, "max-depth", "d", 10, "Maximum depth of the graph to graph. Default is 10.")
+	scanCmd.Flags().StringArrayVarP(&Filter, "filter", "f", []string{"**"}, "Filter file names")
 }
 

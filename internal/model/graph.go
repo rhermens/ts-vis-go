@@ -1,6 +1,9 @@
-package model;
+package model
+
+import "path/filepath"
 
 type Node struct {
+	Name  string
 	Path  string
 	Depth int
 }
@@ -11,9 +14,13 @@ type Edge struct {
 }
 
 type Graph struct {
-	Nodes []Node
-	Edges []Edge
+	Nodes    []Node
+	Edges    []Edge
 	MaxDepth int
+}
+
+func NewNode(path string, depth int) Node {
+	return Node{Path: path, Depth: 0, Name: filepath.Base(path)}
 }
 
 func (g *Graph) FindNode(path string) *Node {
@@ -58,9 +65,16 @@ func (g *Graph) EdgesFromNode(node *Node) []Edge {
 
 func NewGraph() *Graph {
 	return &Graph{
-		Nodes: []Node{},
-		Edges: []Edge{},
+		Nodes:    []Node{},
+		Edges:    []Edge{},
 		MaxDepth: 20,
 	}
 }
 
+func (g *Graph) AddNode(node Node) {
+	g.Nodes = append(g.Nodes, node)
+}
+
+func (g *Graph) AddEdge(from *Node, to *Node) {
+	g.Edges = append(g.Edges, Edge{From: from, To: to})
+}

@@ -3,40 +3,77 @@ package typescript
 import (
 	"os"
 
+	"github.com/gobwas/glob"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	tree_sitter_ts "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
 	"github.com/ts-vis-go/internal/model"
 )
 
-func Scan(entrypoint string) *model.Graph {
+type Scanner struct {
+	Parser   *tree_sitter.Parser
+	Resolver *Resolver
+	Options  ScannerOptions
+}
+
+type ScannerOptions struct {
+	Entrypoint string
+	Filters    []glob.Glob
+}
+
+func NewScanner(options ScannerOptions) *Scanner {
 	parser := tree_sitter.NewParser()
-	defer parser.Close()
 
 	parser.SetLanguage(tree_sitter.NewLanguage(tree_sitter_ts.LanguageTypescript()))
-	resolver := NewResolver(entrypoint)
+	resolver := NewResolver(options.Entrypoint)
 
+	return &Scanner{
+		Parser:   parser,
+		Resolver: resolver,
+		Options:  options,
+	}
+}
+
+func (s *Scanner) Close() {
+	s.Parser.Close()
+}
+
+func (s *Scanner) Scan() *model.Graph {
 	graph := model.NewGraph()
-	next := model.Node{Path: entrypoint, Depth: 0}
-	graph.Nodes = append(graph.Nodes, next)
+	next := model.NewNode(s.Options.Entrypoint, 0)
+	graph.AddNode(next)
 
-	read(parser, resolver, graph, &next)
+	s.next(graph, &next)
 
 	return graph
 }
 
-func read(parser *tree_sitter.Parser, resolver *Resolver, graph *model.Graph, node *model.Node) {
+func (s *Scanner) AnyFilterMatch(path string) bool {
+	for _, filter := range s.Options.Filters {
+		if filter.Match(path) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s *Scanner) next(graph *model.Graph, node *model.Node) {
 	data, err := os.ReadFile(node.Path)
 	if err != nil {
 		return
 	}
 
-	tree := parser.Parse(data, nil)
+	tree := s.Parser.Parse(data, nil)
 	defer tree.Close()
 
 	program := tree.RootNode()
 	for _, ref := range references(&data, program) {
-		resolved, err := resolver.ResolvePath(ref, node.Path)
+		resolved, err := s.Resolver.ResolvePath(ref, node.Path)
 		if err != nil {
+			continue
+		}
+
+		if !s.AnyFilterMatch(resolved) {
 			continue
 		}
 
@@ -45,15 +82,15 @@ func read(parser *tree_sitter.Parser, resolver *Resolver, graph *model.Graph, no
 			continue
 		}
 
-		next := model.Node{Path: resolved, Depth: node.Depth+1}
-		graph.Nodes = append(graph.Nodes, next)
-		graph.Edges = append(graph.Edges, model.Edge{From: node, To: &next})
+		next := model.NewNode(resolved, node.Depth+1)
+		graph.AddNode(next)
+		graph.AddEdge(node, &next)
 
 		if next.Depth > graph.MaxDepth {
 			continue
 		}
 
-		read(parser, resolver, graph, &next)
+		s.next(graph, &next)
 	}
 }
 
