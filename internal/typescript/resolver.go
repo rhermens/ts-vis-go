@@ -3,6 +3,8 @@ package typescript
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
@@ -16,6 +18,7 @@ type tsConfig struct {
 
 type packageFile struct {
 	Dependencies map[string]string `json:"dependencies"`
+	DevDependencies map[string]string `json:"devDependencies"`
 }
 
 type Resolver struct {
@@ -25,23 +28,53 @@ type Resolver struct {
 }
 
 func (r *Resolver) ResolvePath(p string, origin string) (string, error) {
-	if slices.Contains(r.modules, p) {
-		return "", errors.New("Is module")
+	if !path.IsAbs(origin) {
+		return "", errors.New("origin is not absolute")
 	}
 
+	if r.isModule(p) {
+		return "", errors.New(fmt.Sprintf("%s is a module", p))
+	}
+
+	if strings.HasPrefix(p, ".") {
+		return r.resolveRelative(p, origin) 
+	}
+
+	if path.IsAbs(p) {
+		return r.resolveRelative(p, "/") 
+	}
+
+	return r.resolveRelative(p, filepath.Join(r.cwd, "tsconfig.json"))
+}
+
+func (r *Resolver) resolveRelative(p string, origin string) (string, error) {
 	if !strings.HasSuffix(p, ".ts") {
 		p = p + ".ts"
 	}
 
-	if path.IsAbs(p) {
-		return p, nil
+	target := path.Join(path.Dir(origin), p)
+
+	if _, err := os.Stat(target); err != nil {
+		return "", err
 	}
 
-	if strings.HasPrefix(p, ".") {
-		return path.Join(path.Dir(origin), p), nil
+	return target, nil
+}
+
+func (r *Resolver) isModule(p string) bool {
+	if slices.Contains(r.modules, p) {
+		slog.Debug("is module", "path", p)
+		return true
 	}
 
-	return path.Join(r.cwd, p), nil
+	for _, module := range r.modules {
+		if strings.HasPrefix(p, module) {
+			slog.Debug("is module prefix", "path", p, "module", module)
+			return true
+		}
+	}
+
+	return false
 }
 
 func NewResolver(entrypoint string) *Resolver {
@@ -73,6 +106,9 @@ func readDeps(cwd string) ([]string, error) {
 	for k := range pkg.Dependencies {
 		deps = append(deps, k)
 	}
+	for k := range pkg.DevDependencies {
+		deps = append(deps, k)
+	}
 
 	return deps, nil
 }
@@ -91,6 +127,10 @@ func readTsConfig(cwd string) (tsConfig, error) {
 
 func resolveCwd(entrypoint string) (string, error) {
 	abs, _ := filepath.Abs(entrypoint)
+	if _, ok := os.Stat(abs); ok != nil {
+		return "", errors.New("could not find entrypoint")
+	}
+
 	cwd, _ := path.Split(path.Clean(abs))
 
 	if _, err := os.Stat(path.Join(cwd, "tsconfig.json")); err == nil {

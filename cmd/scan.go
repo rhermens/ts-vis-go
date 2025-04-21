@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
+	"github.com/go-echarts/go-echarts/v2/render"
 	"github.com/gobwas/glob"
 	"github.com/spf13/cobra"
 	"github.com/ts-vis-go/internal/model"
@@ -13,7 +14,7 @@ import (
 )
 
 var MaxDepth int
-var Filter []string
+var Filters []string
 
 var scanCmd = &cobra.Command{
 	Use:   "scan",
@@ -32,65 +33,94 @@ var scanCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		scanner := typescript.NewScanner(typescript.ScannerOptions{
 			Entrypoint: args[0],
-			Filters: compileFilters(),
 		})
 		defer scanner.Close()
 
 		graph := scanner.Scan()
-		tree := charts.NewTree()
-		tree.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{
-			Width:  "100%",
-			Height: "100vh",
-		}))
-		tree.AddSeries(args[0], intoTreeData(graph, MaxDepth), charts.WithTreeOpts(opts.TreeChart{
-			Orient: "LR",
-			Roam:   opts.Bool(true),
-			Left:   "0",
-			Right:  "0",
-			Top:    "0",
-			Bottom: "0",
-		}))
+		chart := chartGraph(graph, compileFilters(Filters))
 
 		f, _ := os.Create("deps.html")
-		tree.Render(f)
+		chart.Render(f)
 	},
 }
 
-func compileFilters() []glob.Glob {
+func mapNodesAndLinks(g *model.Graph, filters []glob.Glob) ([]opts.GraphNode, []opts.GraphLink) {
+	var nodes []opts.GraphNode
+	var links []opts.GraphLink
+
+	for _, node := range g.Nodes {
+		if !anyMatches(filters, node.Path) {
+			continue
+		}
+
+		if nodesContainNode(nodes, node.Name) {
+			continue
+		}
+
+		nodes = append(nodes, opts.GraphNode{
+			Name: node.Name,
+		})
+	}
+
+	for _, edge := range g.Edges {
+		if !anyMatches(filters, edge.From.Path) || !anyMatches(filters, edge.To.Path) {
+			continue
+		}
+
+		links = append(links, opts.GraphLink{
+			Source: edge.From.Name,
+			Target: edge.To.Name,
+		})
+	}
+
+	return nodes, links
+}
+
+func chartGraph(g *model.Graph, filters []glob.Glob) render.Renderer {
+	chart := charts.NewGraph()
+	chart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{
+		Width:  "100%",
+		Height: "100vh",
+	}))
+
+	nodes, links := mapNodesAndLinks(g, filters)
+
+	chart.AddSeries("graph", nodes, links, charts.WithGraphChartOpts(opts.GraphChart{
+		Layout: "force",
+		Force: &opts.GraphForce{
+			Repulsion: 100,
+		},
+		Roam: opts.Bool(true),
+	}))
+
+	return chart
+}
+
+func anyMatches(filters []glob.Glob, str string) bool {
+	for _, filter := range filters {
+		if filter.Match(str) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func compileFilters(input []string) []glob.Glob {
 	var filters []glob.Glob
-	for _, filter := range Filter {
+	for _, filter := range input {
 		filters = append(filters, glob.MustCompile(filter))
 	}
 
 	return filters
 }
 
-func intoTreeData(g *model.Graph, maxDepth int) []opts.TreeData {
-	var treeData []opts.TreeData
-	for _, node := range g.NodesByDepth(0) {
-		treeData = append(treeData, opts.TreeData{
-			Name:     node.Name,
-			Children: intoChildren(g, &node, 1, maxDepth),
-		})
+func nodesContainNode(nodes []opts.GraphNode, name any) bool {
+	for _, node := range nodes {
+		if node.Name == name {
+			return true
+		}
 	}
 
-	return treeData
-}
-
-func intoChildren(g *model.Graph, node *model.Node, depth int, maxDepth int) []*opts.TreeData {
-	var children []*opts.TreeData
-	if depth > maxDepth {
-		return children
-	}
-
-	edges := g.EdgesFromNode(node)
-
-	for _, edge := range edges {
-		children = append(children, &opts.TreeData{
-			Name:     edge.To.Name,
-			Children: intoChildren(g, edge.To, depth+1, maxDepth),
-		})
-	}
-
-	return children
+	return false
 }
