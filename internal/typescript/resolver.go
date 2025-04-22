@@ -83,8 +83,8 @@ func NewResolver(entrypoint string) *Resolver {
 		panic(err)
 	}
 
-	deps, err := readDeps(cwd)
-	tsconfig, err := readTsConfig(cwd)
+	deps, _ := readDeps(cwd)
+	tsconfig, _ := readTsConfig(cwd)
 
 	return &Resolver{
 		cwd: cwd,
